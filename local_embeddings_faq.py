@@ -1,8 +1,28 @@
 # local_embeddings_faq.py
 import os
+
+# --- Silence Hugging Face / sentence-transformers startup noise --------------
+# These must be set BEFORE importing sentence_transformers / huggingface_hub.
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")     # no download bars
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")  # no symlink warning
+os.environ.setdefault("TRANSFORMERS_NO_ADVISORY_WARNINGS", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
 import time
 import pickle
+import logging
+
 import numpy as np
+
+# Quiet the "unauthenticated requests to the HF Hub" log line and friends.
+logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
+
+try:
+    from huggingface_hub.utils import disable_progress_bars
+    disable_progress_bars()
+except Exception:
+    pass  # older huggingface_hub: env vars above already cover this
+
 from sentence_transformers import SentenceTransformer
 
 from faq_data import faq_database
@@ -37,7 +57,7 @@ def load_cache(path: str):
 def batch_embeddings(texts):
     model = get_model()
     # model.encode already batches internally; you can still chunk if you want. [web:64]
-    embs = model.encode(texts, batch_size=BATCH_SIZE, show_progress_bar=True, convert_to_numpy=True, normalize_embeddings=True)
+    embs = model.encode(texts, batch_size=BATCH_SIZE, show_progress_bar=False, convert_to_numpy=True, normalize_embeddings=True)
     # normalize_embeddings=True already L2 normalizes; l2_normalize here would be redundant. [web:64][web:65]
     return embs
 
