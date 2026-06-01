@@ -1,0 +1,25 @@
+Hey, I just placed an order for a bunch of Novagear components and realized the ship-to plant is wrong. Can you still change my shipping address or is it too late?
+Why is my promo code saying “not valid” at checkout? I literally just got this yesterday.
+The stuff you sent is not what I ordered. I’m on a tight production deadline, what are you going to do about this?
+Can I still cancel my order for those custom assemblies, or is it locked in once production starts?
+Do you guys even ship outside my country? I’m in Poland and our plant needs these parts.
+My package arrived totally smashed, box dented, foam broken, one unit looks cracked. What’s the process here?
+Your catalog is confusing. How do I know which Novagear part is the correct replacement for the module I already have installed?
+Where can I download the datasheet and wiring diagram for this specific controller if all I have is the part number?
+Is this device actually certified for use in the EU and North America, or am I going to fail an audit?
+What are the temperature and humidity limits for these units? They’re going into a hot, dusty cabinet on our line.
+The device keeps shutting down every time we put it under load—is this thing defective or are we overloading it?
+How exactly am I supposed to mount this on the DIN rail—can it sit sideways or does it have to be upright?
+Do you have a heavy-duty version of this relay or is there only this standard one in your lineup?
+Can your hardware talk to our existing PLCs and network gear? We’ve got a mix of Ethernet and RS‑485 in the plant.
+Is there any way to update the firmware on these devices, or are we stuck with whatever version they shipped with?
+I forgot my portal password again—can I reset it myself or do I have to email someone every single time?
+What does your warranty actually cover on these products, and for how long, in plain English?
+I’m really not happy with this batch; the performance isn’t what our engineers expected. Do you offer any kind of satisfaction guarantee?
+If we commit to a larger volume, do we get better pricing, or is the price shown on the website the final word?
+I need to return some units but the original packaging is gone—will you still take them back?
+Can I still get technical documentation and a recommended replacement for a Novagear product that’s now discontinued?
+How do I start an RMA if one of the units arrives dead on arrival?
+Do I really have to create an account just to buy a couple of prototypes, or can I check out as a guest?
+If the price drops right after I place my order, will you refund the difference or is that just tough luck?
+What information do you actually store about my company and orders, and how is that data protected?

@@ -1,0 +1,9 @@
+.env
+venv/
+__pycache__/
+*.pyc
+data/
+visualization/
+personal_reference.md
+CV_Mustafa_Ansari.pdf
+Term_paper_Industry_4.0_Final_Mustafa_Ansari.pdf
