@@ -775,5 +775,12 @@
     "question": "How do I start an RMA (Return Material Authorization) for a suspected defective Novagear product?",
     "answer": "If you suspect a Novagear product is defective, first collect key information such as the part number, serial or batch number, installation date, and a description of the issue including any diagnostic steps already taken. Contact Novagear technical support or submit a ticket through the customer portal; our team will help you troubleshoot the issue remotely. If a hardware fault is confirmed and the product is within its warranty period, you will be issued an RMA number and instructions for returning the device for repair or replacement."
   }
+},
+{
+  "row_idx": 111,
+  "row": {
+    "question": "What export regulations and compliance requirements apply when shipping Novagear products internationally?",
+    "answer": "When exporting Novagear products, customers must comply with all applicable international trade regulations, including export control laws, customs documentation requirements, and any applicable sanctions or embargo restrictions. It is important to verify whether the product is subject to export classification codes such as ECCN and ensure proper licensing if required. Customers should also prepare accurate commercial invoices, declare the correct value and origin of goods, and confirm that the destination country permits the import of the product. Novagear can provide guidance on product classifications and necessary documentation, but the exporter is ultimately responsible for ensuring full compliance with local and international regulations."
+  }
 }
 ]

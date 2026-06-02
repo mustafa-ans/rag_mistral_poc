@@ -36,3 +36,23 @@ except FileNotFoundError:
     # fall back to empty structures to avoid import-time crashes during testing
     faq_database = {}
     corpus_texts = []
+
+
+def reload_faq_database():
+    """
+    Re-read faq_jso_data.json from disk and update the module-level
+    `faq_database` / `corpus_texts` IN PLACE.
+
+    This matters because other modules do `from faq_data import faq_database`,
+    which binds their name to the dict object that exists at import time.
+    Re-assigning the module global would NOT update those references, so we
+    mutate the existing objects (clear + repopulate) instead — that way every
+    importer sees the new data. Call this before a forced re-embed if the JSON
+    may have changed during the session.
+    """
+    new_qa, new_texts = load_faq_database()
+    faq_database.clear()
+    faq_database.update(new_qa)
+    corpus_texts.clear()
+    corpus_texts.extend(new_texts)
+    return faq_database

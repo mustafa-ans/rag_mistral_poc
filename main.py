@@ -3,7 +3,7 @@ import csv
 from dotenv import load_dotenv
 from openai import OpenAI, OpenAIError
 
-from faq_data import faq_database
+from faq_data import faq_database, reload_faq_database
 from local_embeddings_faq import get_or_build_faq_embeddings
 from retrieval_faq import retrieve_faq_context
 
@@ -99,8 +99,10 @@ def run_interactive_chat(vector_db):
 
         if cmd == "rebuild":
             print("Rebuilding embeddings...")
+            reload_faq_database()  # re-read the JSON from disk first, so edits made
+                                   # during this session are picked up
             vector_db = get_or_build_faq_embeddings(force_rebuild=True)
-            print("Done.")
+            print(f"Done. {len(vector_db)} FAQ questions embedded.")
             continue
 
         ans = ask_mistral_rag(q, vector_db)
