@@ -27,7 +27,7 @@ from sentence_transformers import SentenceTransformer
 
 from faq_data import faq_database
 
-EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"  # ~384-dim, fast [web:64][web:66]
+EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"  # ~384-dim, fast
 EMBEDDING_CACHE = os.path.join("data", "faq_embeddings_local.pkl")
 BATCH_SIZE = 100
 
@@ -56,9 +56,9 @@ def load_cache(path: str):
 
 def batch_embeddings(texts):
     model = get_model()
-    # model.encode already batches internally; you can still chunk if you want. [web:64]
+    # model.encode already batches internally; you can still chunk if you want. 
     embs = model.encode(texts, batch_size=BATCH_SIZE, show_progress_bar=False, convert_to_numpy=True, normalize_embeddings=True)
-    # normalize_embeddings=True already L2 normalizes; l2_normalize here would be redundant. [web:64][web:65]
+    # normalize_embeddings=True already L2 normalizes; l2_normalize here would be redundant. 
     return embs
 
 def get_or_build_faq_embeddings(cache_file=EMBEDDING_CACHE, force_rebuild: bool = False):
