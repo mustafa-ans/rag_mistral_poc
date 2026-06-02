@@ -56,7 +56,8 @@ def load_cache(path: str):
 
 def batch_embeddings(texts):
     model = get_model()
-    # model.encode already batches internally; you can still chunk if you want. 
+    # We apply L2 normalization to both stored FAQ embeddings and the user query embedding so each vector has unit length. 
+    # That removes magnitude from the comparison, and then the dot product becomes equivalent to cosine similarity.
     embs = model.encode(texts, batch_size=BATCH_SIZE, show_progress_bar=False, convert_to_numpy=True, normalize_embeddings=True)
     # normalize_embeddings=True already L2 normalizes; l2_normalize here would be redundant. 
     return embs

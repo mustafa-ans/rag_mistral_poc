@@ -11,7 +11,11 @@ def find_top_k_similar_faq(query_embedding: np.ndarray, vector_db: dict, k: int 
     if valid_idx.size == 0:
         return []
     k_eff = min(k, valid_idx.size)
+    # argpartition gets the k largest in linear time but unordered; sort only those k.
     top_unsorted = valid_idx[np.argpartition(sims[valid_idx], -k_eff)[-k_eff:]]
+    print()
+    print(f"top_unsorted indices: {top_unsorted}, sims: {sims[top_unsorted]}")
+    print()
     top_sorted = top_unsorted[np.argsort(sims[top_unsorted])[::-1]]
     return [(keys[i], float(sims[i])) for i in top_sorted]
 

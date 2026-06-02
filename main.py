@@ -32,7 +32,8 @@ def ask_mistral_rag(
     max_tokens: int = 250,
     k: int = 4,
     min_sim: float = 0.55,
-    show_debug: bool = False,
+    # show_debug: bool = False,
+    show_debug: bool = True,
     return_debug: bool = False,
 ):
     """
