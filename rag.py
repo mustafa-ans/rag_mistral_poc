@@ -1,7 +1,7 @@
 # rag.py
-# The RAG pipeline. For a question we pull the most relevant FAQ entries from the
-# database (db.search) and ask Mistral to answer using only those entries. We talk to
-# Mistral through the OpenAI SDK because its API is OpenAI-compatible.
+# The RAG pipeline. For a question we pull the most relevant FAQ entries from the database
+# (db.search) and ask Mistral to answer using only those entries. We talk to Mistral through
+# the OpenAI SDK because its API is OpenAI-compatible.
 import os
 
 from dotenv import load_dotenv
@@ -26,25 +26,15 @@ SYSTEM_PROMPT = (
 )
 
 
-def ask_mistral_rag(
-    question: str,
-    conn,
-    max_tokens: int = 250,
-    k: int = 4,
-    min_sim: float = 0.55,
-    show_debug: bool = False,
-    return_debug: bool = False,
-):
-    """
-    Answer a question with retrieval-augmented generation.
-    Retrieval runs in Postgres (db.search). With return_debug=True we also return the
-    retrieved context and the hits, which the evaluation mode needs.
-    """
+def ask_mistral_rag(question, conn, max_tokens=250, k=4, min_sim=0.55,
+                    show_debug=False, return_debug=False):
+    # Answer a question with retrieval-augmented generation. Retrieval runs in Postgres
+    # (db.search). With return_debug=True we also return the retrieved context and the hits,
+    # which the evaluation mode needs.
     context_block, hits = db.search(conn, question, k=k, min_sim=min_sim)
 
     if not context_block:
-        # Nothing cleared the similarity threshold, so we don't call the model and
-        # just say we don't know.
+        # Nothing cleared the threshold, so we don't call the model and just say we don't know.
         answer = "Sorry, I don't know the answer to that question based on the available FAQ."
         if return_debug:
             return answer, "", []

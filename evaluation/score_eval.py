@@ -1,38 +1,31 @@
-"""
-score_eval.py
-Compare a stress-test run against the gold answer key, print the numbers, and draw a chart.
-
-It reads three files from an evaluation folder (default: evaluation/stress_75):
-  gold.json               the answer key: which FAQ each question should retrieve
-  retrieval_log.jsonl     what the pipeline actually retrieved (written by the eval modes)
-  evaluation_results.csv  your manual labels (optional, for the answer-quality numbers)
-
-From the log it works out on its own:
-  retrieval recall@k for the in-scope questions, overall and per category
-  how often multi-part questions retrieved both expected FAQs
-  how often out-of-scope and adversarial questions were declined
-
-Run:
-  python evaluation/score_eval.py
-  python evaluation/score_eval.py --dir evaluation/stress_75
-  python evaluation/score_eval.py --no-chart
-
-Matching is case-insensitive: an expected FAQ counts as retrieved if its key phrase shows
-up in any of the retrieved FAQ questions.
-"""
+# score_eval.py
+# Compare a stress-test run against the gold answer key, print the numbers, and draw a chart.
+#
+# It reads three files from an evaluation folder (default: evaluation/stress_75):
+#   gold.json               the answer key: which FAQ each question should retrieve
+#   retrieval_log.jsonl     what the pipeline actually retrieved (written by the eval modes)
+#   evaluation_results.csv  your manual labels (optional, for the answer-quality numbers)
+#
+# From the log it works out: retrieval recall@k for the in-scope questions (overall and per
+# category), how often multi-part questions retrieved both expected FAQs, and how often
+# out-of-scope and adversarial questions were declined.
+#
+# Run:
+#   python evaluation/score_eval.py
+#   python evaluation/score_eval.py --dir evaluation/stress_75
+#   python evaluation/score_eval.py --no-chart
+#
+# Matching is case-insensitive: an expected FAQ counts as retrieved if its key phrase shows
+# up in any of the retrieved FAQ questions.
 import argparse
 import csv
 import json
 import os
 from collections import defaultdict
 
-try:
-    import matplotlib
-    matplotlib.use("Agg") 
-    import matplotlib.pyplot as plt
-    HAVE_MPL = True
-except Exception:
-    HAVE_MPL = False
+import matplotlib
+matplotlib.use("Agg")  # render to a file, no window
+import matplotlib.pyplot as plt
 
 CATEGORY_ORDER = ["paraphrase", "jargon", "hard_negative", "multi_part",
                   "typo", "rambling", "ambiguous", "negation"]
@@ -62,7 +55,7 @@ def expected_matches(selectors, retrieved_faqs):
 
 
 def compute(gold, log):
-    """Work out all the numbers from the gold key and the retrieval log."""
+    # work out all the numbers from the gold key and the retrieval log
     cat_total = defaultdict(int)
     cat_hit = defaultdict(int)
     r = {
@@ -83,8 +76,8 @@ def compute(gold, log):
         behavior = item["behavior"]
         cat = item["category"]
 
-        # Out-of-scope and adversarial questions have no correct FAQ; the right
-        # behaviour is to decline, so we just track whether retrieval was refused.
+        # out-of-scope and adversarial questions have no correct FAQ; the right behaviour is
+        # to decline, so we just track whether retrieval was refused
         if behavior in ("refuse", "deflect"):
             if behavior == "refuse":
                 r["oos_total"] += 1
@@ -97,7 +90,7 @@ def compute(gold, log):
         selectors = item["expected"]
         match = item.get("match", "any")
         found = expected_matches(selectors, retrieved)
-        # "all" means every expected FAQ has to show up (multi-part); "any" means one is enough.
+        # "all" means every expected FAQ has to show up (multi-part); "any" means one is enough
         hit = (len(found) == len(selectors) and selectors) if match == "all" else (len(found) >= 1)
 
         r["inscope_total"] += 1
@@ -166,8 +159,8 @@ def print_report(r, human, k, min_sim, folder):
 
 
 def make_chart(r, human, k, out_path):
-    """Draw the scorecard: the three labeled metrics plus the recall@k number. If there
-    are no labels yet (a retrieval-only run) we show the automatic numbers instead."""
+    # draw the scorecard: the three labeled metrics plus the recall@k number. if there are no
+    # labels yet (a retrieval-only run) we show the automatic numbers instead.
     bars = []  # (label, value_pct, color)
     n_label = ""
     if human:
@@ -185,7 +178,7 @@ def make_chart(r, human, k, out_path):
             bars.append((f"Retrieval recall@{k}",
                          100 * r["inscope_hit"] / r["inscope_total"], "#8172B3"))
     else:
-        # No labels yet: show the automatic retrieval and refusal numbers.
+        # no labels yet: show the automatic retrieval and refusal numbers
         def add(label, ht, color):
             hit, total = ht
             if total:
@@ -216,44 +209,26 @@ def make_chart(r, human, k, out_path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dir", default="evaluation/stress_75",
-                    help="folder with gold.json, retrieval_log.jsonl, evaluation_results.csv")
-    ap.add_argument("--no-chart", dest="chart", action="store_false",
-                    help="skip the PNG chart")
-    ap.add_argument("--chart-path", default=None, help="output path for the chart PNG")
+    ap.add_argument("--dir", default="evaluation/stress_75")
+    ap.add_argument("--no-chart", dest="chart", action="store_false")
     ap.set_defaults(chart=True)
     args = ap.parse_args()
 
-    gold_path = os.path.join(args.dir, "gold.json")
-    log_path = os.path.join(args.dir, "retrieval_log.jsonl")
-    csv_path = os.path.join(args.dir, "evaluation_results.csv")
-
-    if not os.path.exists(gold_path):
-        raise SystemExit(f"gold.json not found in {args.dir}")
-    if not os.path.exists(log_path):
-        raise SystemExit(
-            f"retrieval_log.jsonl not found in {args.dir}.\n"
-            f"Run the pipeline first:  python main.py  -> mode 2 or 3 on this question set."
-        )
-
-    gold_meta, gold = load_gold(gold_path)
-    log = load_log(log_path)
+    gold_meta, gold = load_gold(os.path.join(args.dir, "gold.json"))
+    log = load_log(os.path.join(args.dir, "retrieval_log.jsonl"))
     k = gold_meta.get("k", "?")
     min_sim = gold_meta.get("min_sim", "?")
 
     results = compute(gold, log)
+    csv_path = os.path.join(args.dir, "evaluation_results.csv")
     human = load_human_labels(csv_path) if os.path.exists(csv_path) else None
 
     print_report(results, human, k, min_sim, args.dir)
 
     if args.chart:
-        if not HAVE_MPL:
-            print(" Chart skipped: matplotlib is not installed (pip install matplotlib).")
-        else:
-            out = args.chart_path or os.path.join(args.dir, "stress75_scorecard.png")
-            make_chart(results, human, k, out)
-            print(f" Chart written to {out}")
-    print("=" * 64)
+        out = os.path.join(args.dir, "stress75_scorecard.png")
+        make_chart(results, human, k, out)
+        print(f" Chart written to {out}")
 
 
 if __name__ == "__main__":

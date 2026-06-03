@@ -32,7 +32,7 @@ _model = None
 
 
 def get_model():
-    """Load the model once and reuse it."""
+    # load the model once and reuse it
     global _model
     if _model is None:
         _model = SentenceTransformer(EMBEDDING_MODEL_NAME)
@@ -40,7 +40,7 @@ def get_model():
 
 
 def batch_embeddings(texts):
-    """Embed a list of texts into an (N, 384) float32 array, L2-normalised."""
+    # embed a list of texts into an (N, 384) float32 array, L2-normalised
     model = get_model()
     # We apply L2 normalization to both stored FAQ embeddings and the user query embedding so each vector has unit length.
     # That removes magnitude from the comparison, and then the dot product (pgvector cosine) becomes equivalent to cosine similarity.
@@ -49,7 +49,7 @@ def batch_embeddings(texts):
 
 
 def embed_query_local(query: str) -> np.ndarray:
-    """Embed a single query the same way as the corpus (normalised float32)."""
+    # embed a single query the same way as the corpus (normalised float32)
     model = get_model()
     vec = model.encode([query], convert_to_numpy=True, normalize_embeddings=True)[0]
     return vec.astype(np.float32)

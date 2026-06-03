@@ -114,20 +114,30 @@ once into your Postgres.
 
 - macOS / Linux: `brew install pgvector`, or `sudo apt install postgresql-XX-pgvector` (match `XX` to your Postgres major version), or build from source.
 
-### 2. Create the database
+### 2. Create the database and table
 
-Create the database the app expects (default name `rag_poc_db`) and enable the extension. With
-`psql`:
+Create the database (default name `rag_poc_db`), enable the extension, and create the `faq`
+table the app reads from. With `psql`:
 
 ```sql
 CREATE DATABASE rag_poc_db;
 \c rag_poc_db
 CREATE EXTENSION vector;
+
+CREATE TABLE faq (
+    id         SERIAL PRIMARY KEY,
+    row_idx    INTEGER,
+    question   TEXT NOT NULL UNIQUE,
+    answer     TEXT NOT NULL,
+    embedding  vector(384) NOT NULL
+);
+
+CREATE INDEX faq_embedding_hnsw
+    ON faq USING hnsw (embedding vector_cosine_ops);
 ```
 
-`main.py` also runs `CREATE EXTENSION IF NOT EXISTS vector` on startup, so the manual
-`CREATE EXTENSION` is only needed if your DB user can't create extensions. The database itself
-has to exist before you run the app.
+The app doesn't create the schema itself; it expects this table to exist. `main.py` fills it
+with data on the first run.
 
 ### 3. Configure `.env`
 
@@ -154,9 +164,8 @@ pip install -r requirements.txt
 python main.py
 ```
 
-On the first run `main.py` connects, creates the `faq` table and HNSW index if they're missing,
-and (because the table is empty) embeds every FAQ question locally and loads the rows into
-Postgres. The MiniLM model downloads once from Hugging Face (~90 MB) and is cached on disk. You
+On the first run `main.py` connects and, because the `faq` table is empty, embeds every FAQ
+question locally and loads the rows into Postgres. The MiniLM model downloads once from Hugging Face (~90 MB) and is cached on disk. You
 may see a one-time "set a HF_TOKEN for higher rate limits" message during that download; it's
 harmless (a version check, not an upload of your data). Once the model is cached, the app sets
 `HF_HUB_OFFLINE` on its own, so every later run is offline and quiet. After it reports the row

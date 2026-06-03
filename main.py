@@ -1,3 +1,8 @@
+# main.py
+# Entry point. Connect to Postgres, load the FAQ if the table is empty, then start a mode.
+# The work lives in rag.py (pipeline), cli.py (modes), db.py (storage), and
+# local_embeddings_faq.py (the embedding model). The faq table is created once by hand,
+# see the README for the SQL.
 from dotenv import load_dotenv
 
 import db
@@ -7,31 +12,19 @@ load_dotenv()
 
 
 if __name__ == "__main__":
-    try:
-        conn = db.connect()
-    except Exception as e:
-        print(f"Could not connect to the database: {e}")
-        raise SystemExit(1)
+    conn = db.connect()
 
-    # Create the table and index if they aren't there yet (safe to run every time).
-    try:
-        db.init_schema(conn)
-    except RuntimeError as e:
-        print(e)
-        raise SystemExit(1)
-
-    # If the table is empty, load it from the JSON. Otherwise ask before reloading.
+    # if the table is empty, load it from the JSON; otherwise ask before reloading
     if db.faq_count(conn) == 0:
-        print("FAQ table is empty; ingesting from faq_jso_data.json ...")
+        print("FAQ table is empty, loading from the JSON...")
         n = db.ingest_faq(conn)
-        print(f"Ingested {n} rows.")
+        print(f"Loaded {n} rows.")
     else:
         choice = input("Re-ingest FAQ data into Postgres? (y/n): ").strip().lower()
         if choice == "y":
             n = db.ingest_faq(conn)
             print(f"Re-ingested {n} rows.")
 
-    # Pick a mode.
     print("\nSelect mode:")
     print("1) Interactive chat")
     print("2) Evaluation mode (batch questions -> labels + retrieval log)")
