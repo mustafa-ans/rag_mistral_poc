@@ -1,26 +1,24 @@
-#!/usr/bin/env python3
 """
-score_eval.py — cross-validate a stress-test run against the gold reference,
-print the metrics, and render a bar chart.
+score_eval.py
+Compare a stress-test run against the gold answer key, print the numbers, and draw a chart.
 
-Reads three files from an evaluation folder (default: evaluation/stress_75):
-  - gold.json             : expected FAQ targets + behavior per question (answer key)
-  - retrieval_log.jsonl   : what the pipeline retrieved (written by main.py eval / retrieval-only mode)
-  - evaluation_results.csv: your manual labels (optional; for answer-quality metrics)
+It reads three files from an evaluation folder (default: evaluation/stress_75):
+  gold.json               the answer key: which FAQ each question should retrieve
+  retrieval_log.jsonl     what the pipeline actually retrieved (written by the eval modes)
+  evaluation_results.csv  your manual labels (optional, for the answer-quality numbers)
 
-Computes automatically from the log:
-  - retrieval recall@k for in-scope questions, overall and per category
-  - multi-part "both retrieved" vs "either retrieved"
-  - out-of-scope and adversarial refusal rates
+From the log it works out on its own:
+  retrieval recall@k for the in-scope questions, overall and per category
+  how often multi-part questions retrieved both expected FAQs
+  how often out-of-scope and adversarial questions were declined
 
-Usage:
+Run:
   python evaluation/score_eval.py
   python evaluation/score_eval.py --dir evaluation/stress_75
-  python evaluation/score_eval.py --no-chart           # skip the PNG
-  python evaluation/score_eval.py --chart-path out.png
+  python evaluation/score_eval.py --no-chart
 
-Matching is case-insensitive substring: an expected selector counts as retrieved if it
-appears inside any retrieved FAQ question text.
+Matching is case-insensitive: an expected FAQ counts as retrieved if its key phrase shows
+up in any of the retrieved FAQ questions.
 """
 import argparse
 import csv
@@ -30,7 +28,7 @@ from collections import defaultdict
 
 try:
     import matplotlib
-    matplotlib.use("Agg")  # headless: write a file, never open a window
+    matplotlib.use("Agg") 
     import matplotlib.pyplot as plt
     HAVE_MPL = True
 except Exception:
@@ -64,7 +62,7 @@ def expected_matches(selectors, retrieved_faqs):
 
 
 def compute(gold, log):
-    """Return a structured results dict from gold + retrieval log."""
+    """Work out all the numbers from the gold key and the retrieval log."""
     cat_total = defaultdict(int)
     cat_hit = defaultdict(int)
     r = {
@@ -85,6 +83,8 @@ def compute(gold, log):
         behavior = item["behavior"]
         cat = item["category"]
 
+        # Out-of-scope and adversarial questions have no correct FAQ; the right
+        # behaviour is to decline, so we just track whether retrieval was refused.
         if behavior in ("refuse", "deflect"):
             if behavior == "refuse":
                 r["oos_total"] += 1
@@ -97,6 +97,7 @@ def compute(gold, log):
         selectors = item["expected"]
         match = item.get("match", "any")
         found = expected_matches(selectors, retrieved)
+        # "all" means every expected FAQ has to show up (multi-part); "any" means one is enough.
         hit = (len(found) == len(selectors) and selectors) if match == "all" else (len(found) >= 1)
 
         r["inscope_total"] += 1
@@ -137,67 +138,74 @@ def print_report(r, human, k, min_sim, folder):
     print("=" * 64)
     if r["missing"]:
         m = r["missing"]
-        print(f"\n[!] {len(m)} gold questions had no log entry (idx {m[:10]}"
+        print(f"\n{len(m)} questions in the gold file had no log entry (idx {m[:10]}"
               f"{'...' if len(m) > 10 else ''}). Re-run over the full set.")
 
-    print("\n## Retrieval (automatic, log vs gold.json)")
+    print("\nRetrieval (worked out from the log):")
     print(f"  In-scope recall@{k}: {pct((r['inscope_hit'], r['inscope_total']))}")
-    print("\n  By category:")
+    print("  By category:")
     for cat, ht in r["categories"].items():
         print(f"    {cat:<14} {pct(ht)}")
     if r["multi_total"]:
-        print(f"\n  Multi-part — both FAQs: {pct((r['multi_both'], r['multi_total']))}; "
+        print(f"  Multi-part, both FAQs retrieved: {pct((r['multi_both'], r['multi_total']))}; "
               f"at least one: {pct((r['multi_either'], r['multi_total']))}")
 
-    print("\n## Safety / scope (automatic = did it decline to retrieve?)")
+    print("\nScope and safety (did it decline to retrieve?):")
     print(f"  Out-of-scope refusal: {pct((r['oos_refused'], r['oos_total']))}")
     print(f"  Adversarial refusal:  {pct((r['adv_refused'], r['adv_total']))}")
-    print("  Note: this measures retrieval suppression only. Whether the *answer* safely")
-    print("  declined a question that still retrieved context is the human-label call")
-    print("  (no_hallucination_on_oos in the CSV).")
+    print("  This only checks whether retrieval was suppressed. Whether the answer itself")
+    print("  safely declined is your call (the no_hallucination_on_oos column).")
 
     if human:
-        print("\n## Human labels (evaluation_results.csv)")
+        print("\nYour manual labels (from evaluation_results.csv):")
         for c, ht in human.items():
             print(f"  {c:<24} {pct(ht)}")
     else:
-        print("\n## Human labels: none found (run labeling mode to add them).")
+        print("\nNo manual labels found yet (run the labeling mode to add them).")
     print("\n" + "=" * 64)
 
 
 def make_chart(r, human, k, out_path):
-    """Render per-category recall + refusal rates (+ human labels) to a PNG."""
-    labels, values, colors = [], [], []
-
-    def add(label, ht, color):
-        hit, total = ht
-        if total:
-            labels.append(label)
-            values.append(100 * hit / total)
-            colors.append(color)
-
-    add(f"Overall\nrecall@{k}", (r["inscope_hit"], r["inscope_total"]), "#2563eb")
-    for cat, ht in r["categories"].items():
-        # highlight hard_negative — the category most likely to be weak
-        add(cat, ht, "#dc2626" if cat == "hard_negative" else "#60a5fa")
-    add("OOS\nrefusal", (r["oos_refused"], r["oos_total"]), "#16a34a")
-    add("Adversarial\nrefusal", (r["adv_refused"], r["adv_total"]), "#16a34a")
+    """Draw the scorecard: the three labeled metrics plus the recall@k number. If there
+    are no labels yet (a retrieval-only run) we show the automatic numbers instead."""
+    bars = []  # (label, value_pct, color)
+    n_label = ""
     if human:
-        for c, ht in human.items():
-            short = {"retrieval_success": "label:\nretrieval",
-                     "answer_correct": "label:\nanswer",
-                     "no_hallucination_on_oos": "label:\nno-halluc"}.get(c, c)
-            add(short, ht, "#a855f7")
+        order = [
+            ("Retrieval success", "retrieval_success", "#4C72B0"),
+            ("Answer correctness", "answer_correct", "#55A868"),
+            ("No hallucination on OOS", "no_hallucination_on_oos", "#C44E52"),
+        ]
+        for label, key, color in order:
+            if key in human:
+                hit, total = human[key]
+                bars.append((label, 100 * hit / total, color))
+                n_label = f" (N={total})"
+        if r["inscope_total"]:
+            bars.append((f"Retrieval recall@{k}",
+                         100 * r["inscope_hit"] / r["inscope_total"], "#8172B3"))
+    else:
+        # No labels yet: show the automatic retrieval and refusal numbers.
+        def add(label, ht, color):
+            hit, total = ht
+            if total:
+                bars.append((label, 100 * hit / total, color))
+        add(f"Retrieval recall@{k}", (r["inscope_hit"], r["inscope_total"]), "#4C72B0")
+        add("Hard-negative recall", r["categories"].get("hard_negative", (0, 0)), "#55A868")
+        add("OOS refusal", (r["oos_refused"], r["oos_total"]), "#C44E52")
 
-    fig, ax = plt.subplots(figsize=(max(8, len(labels) * 0.8), 4.8))
-    bars = ax.bar(range(len(labels)), values, color=colors)
+    labels = [b[0] for b in bars]
+    values = [b[1] for b in bars]
+    colors = [b[2] for b in bars]
+    fig, ax = plt.subplots(figsize=(max(7, len(labels) * 2.1), 5))
+    xb = ax.bar(range(len(labels)), values, color=colors, width=0.6)
     ax.set_xticks(range(len(labels)))
-    ax.set_xticklabels(labels, fontsize=8)
-    ax.set_ylim(0, 105)
-    ax.set_ylabel("percent")
-    ax.set_title(f"RAG stress-test scorecard (k={k})  —  red = hard negatives")
-    for b, v in zip(bars, values):
-        ax.text(b.get_x() + b.get_width() / 2, v + 1.5, f"{v:.0f}", ha="center", fontsize=8)
+    ax.set_xticklabels(labels, fontsize=9)
+    ax.set_ylim(0, 110)  # a little room above 100 so a full bar's label clears the title
+    ax.set_ylabel("Percentage (%)")
+    ax.set_title(f"RAG Chatbot Evaluation on FAQ Dataset{n_label}", pad=12)
+    for b, v in zip(xb, values):
+        ax.text(b.get_x() + b.get_width() / 2, v + 1.5, f"{v:.0f}%", ha="center", fontsize=11)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     fig.tight_layout()
@@ -240,7 +248,7 @@ def main():
 
     if args.chart:
         if not HAVE_MPL:
-            print(" Chart skipped: matplotlib not installed (pip install matplotlib).")
+            print(" Chart skipped: matplotlib is not installed (pip install matplotlib).")
         else:
             out = args.chart_path or os.path.join(args.dir, "stress75_scorecard.png")
             make_chart(results, human, k, out)

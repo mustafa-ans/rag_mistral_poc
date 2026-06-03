@@ -1,13 +1,10 @@
 # db.py
-# Postgres + pgvector storage and retrieval layer.
+# Postgres + pgvector storage and retrieval. The FAQ rows and their 384-dim embeddings
+# sit in one `faq` table, and the top-k search with the similarity threshold runs inside
+# Postgres using pgvector's cosine-distance operator.
 #
-# Replaces the old pickle embedding cache. The FAQ data AND its 384-dim
-# embeddings live in a single `faq` table; retrieval (top-k + similarity
-# threshold) runs inside Postgres via pgvector's cosine-distance operator.
-#
-# The embedding model is still local (sentence-transformers, all-MiniLM-L6-v2);
-# only WHERE the vectors are stored and searched has changed. The embedder is
-# imported lazily so that simply connecting to the DB does not load the model.
+# The embedding model is still local (all-MiniLM-L6-v2). We import it lazily so that just
+# connecting to the database doesn't load the model.
 
 import os
 import json
@@ -15,10 +12,10 @@ import json
 import psycopg
 from pgvector.psycopg import register_vector
 
-EMBED_DIM = 384  # all-MiniLM-L6-v2 output dimension
+EMBED_DIM = 384  # dims
 
 
-# --- connection -------------------------------------------------------------
+# connection
 
 def get_database_url() -> str:
     url = os.environ.get("DATABASE_URL")
@@ -31,13 +28,13 @@ def get_database_url() -> str:
 
 
 def connect(url: str = None) -> psycopg.Connection:
-    """Open a connection and register the pgvector type adapters on it."""
+    """Open a connection and register pgvector on it so we can pass numpy arrays."""
     conn = psycopg.connect(url or get_database_url())
-    register_vector(conn)  # lets us pass/receive numpy arrays as `vector`
+    register_vector(conn)
     return conn
 
 
-# --- schema -----------------------------------------------------------------
+# schema
 
 _TABLE_SQL = f"""
 CREATE TABLE IF NOT EXISTS faq (
@@ -49,9 +46,9 @@ CREATE TABLE IF NOT EXISTS faq (
 );
 """
 
-# HNSW index for cosine distance. Embeddings are L2-normalised, so cosine is the
-# right metric. At ~100 rows the index is optional (a scan is instant), but it is
-# best practice and makes the design scale without code changes.
+# HNSW index using cosine distance. Our embeddings are L2-normalised, so cosine is the
+# metric we want. At ~100 rows the index doesn't really matter, but it means the search
+# keeps working the same way if the corpus grows.
 _INDEX_SQL = """
 CREATE INDEX IF NOT EXISTS faq_embedding_hnsw
     ON faq USING hnsw (embedding vector_cosine_ops);
@@ -59,7 +56,7 @@ CREATE INDEX IF NOT EXISTS faq_embedding_hnsw
 
 
 def init_schema(conn: psycopg.Connection) -> None:
-    """Enable pgvector and create the table + index. Idempotent."""
+    """Enable pgvector and create the table and index. Safe to run every time."""
     with conn.cursor() as cur:
         try:
             cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
@@ -67,26 +64,25 @@ def init_schema(conn: psycopg.Connection) -> None:
             conn.rollback()
             raise RuntimeError(
                 "Failed to enable the pgvector extension. Install pgvector for your "
-                "Postgres and ensure your DB user may CREATE EXTENSION "
-                "(see pgvector_migration.md).\nOriginal error: " + str(e)
+                "Postgres and make sure your DB user can CREATE EXTENSION.\n"
+                "Original error: " + str(e)
             )
         cur.execute(_TABLE_SQL)
         cur.execute(_INDEX_SQL)
     conn.commit()
 
 
-# --- ingestion --------------------------------------------------------------
+# ingestion
 
 def _load_rows(json_path: str = None):
-    """Read the FAQ JSON and return de-duplicated (row_idx, question, answer)
-    tuples. De-dup is on the question text (later rows win), matching the old
-    dict behaviour."""
+    """Read the FAQ JSON and return (row_idx, question, answer) tuples. Duplicate
+    questions are collapsed, keeping the last one, same as the old dict did."""
     base = os.path.dirname(__file__)
     path = json_path or os.path.join(base, "knowledge_base", "faq_jso_data.json")
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    seen = {}  # question -> (row_idx, question, answer); preserves last occurrence
+    seen = {}  # question -> (row_idx, question, answer), keeping the last occurrence
     for item in data:
         row = item.get("row", {})
         q = row.get("question")
@@ -104,14 +100,14 @@ def faq_count(conn: psycopg.Connection) -> int:
 
 
 def ingest_faq(conn: psycopg.Connection, json_path: str = None) -> int:
-    """(Re)load the FAQ JSON into the `faq` table, embedding each question
-    locally. Idempotent: upserts on the unique question, refreshing the answer
-    and embedding. Returns the number of rows ingested."""
-    from local_embeddings_faq import batch_embeddings  # lazy: avoid model load on import
+    """Load the FAQ JSON into the table, embedding each question. Running it again
+    updates the answer and embedding for a question that already exists. Returns the
+    number of rows."""
+    from local_embeddings_faq import batch_embeddings 
 
     rows = _load_rows(json_path)
     questions = [q for (_idx, q, _a) in rows]
-    embeddings = batch_embeddings(questions)  # 384-dim, L2-normalised
+    embeddings = batch_embeddings(questions)  # L2-normalised
 
     with conn.cursor() as cur:
         for (row_idx, q, a), emb in zip(rows, embeddings):
@@ -130,17 +126,16 @@ def ingest_faq(conn: psycopg.Connection, json_path: str = None) -> int:
     return len(rows)
 
 
-# --- retrieval --------------------------------------------------------------
+# retrieval
 
 def search(conn: psycopg.Connection, query: str, k: int = 4, min_sim: float = 0.55):
-    """Embed the query locally and return (context_block, hits) — the same shape
-    the old retrieve_faq_context returned — but the top-k and similarity threshold
-    run in Postgres.
+    """Embed the query and return (context_block, hits). The top-k and the similarity
+    threshold are done in Postgres.
 
-    pgvector's `<=>` is cosine DISTANCE; similarity = 1 - distance. We keep rows
-    with similarity >= min_sim and order by nearest first.
+    pgvector's `<=>` gives cosine distance, so similarity is 1 - distance. We keep the
+    rows at or above min_sim and order them nearest first.
     """
-    from local_embeddings_faq import embed_query_local  # lazy
+    from local_embeddings_faq import embed_query_local
 
     q_emb = embed_query_local(query)
     with conn.cursor() as cur:

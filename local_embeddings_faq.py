@@ -1,38 +1,38 @@
-# local_embeddings_faq.py
-# Local sentence-embedding model (all-MiniLM-L6-v2, 384-dim).
-# Storage/retrieval of the vectors now lives in db.py (Postgres + pgvector);
-# this module's only job is turning text into normalised vectors.
 import os
-
-# --- Silence Hugging Face / sentence-transformers startup noise --------------
-# These must be set BEFORE importing sentence_transformers / huggingface_hub.
-os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")     # no download bars
-os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")  # no symlink warning
-os.environ.setdefault("TRANSFORMERS_NO_ADVISORY_WARNINGS", "1")
-os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-
 import logging
 import numpy as np
 
-# Quiet the "unauthenticated requests to the HF Hub" log line and friends.
+# Quiet down the Hugging Face
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")     
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")  
+os.environ.setdefault("TRANSFORMERS_NO_ADVISORY_WARNINGS", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
+from pathlib import Path
+_hf_home = os.environ.get("HF_HOME")
+_cache_root = (Path(_hf_home) / "hub") if _hf_home else (Path.home() / ".cache" / "huggingface" / "hub")
+if (_cache_root / "models--sentence-transformers--all-MiniLM-L6-v2").exists():
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
 logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
 
 try:
     from huggingface_hub.utils import disable_progress_bars
     disable_progress_bars()
 except Exception:
-    pass  # older huggingface_hub: env vars above already cover this
+    pass  
 
 from sentence_transformers import SentenceTransformer
 
-EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"  # ~384-dim, fast
+EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 BATCH_SIZE = 100
 
 _model = None
 
 
 def get_model():
-    """Lazy singleton: load the model once, on first use."""
+    """Load the model once and reuse it."""
     global _model
     if _model is None:
         _model = SentenceTransformer(EMBEDDING_MODEL_NAME)
@@ -40,7 +40,7 @@ def get_model():
 
 
 def batch_embeddings(texts):
-    """Embed a list of texts -> (N, 384) float32 array, L2-normalised."""
+    """Embed a list of texts into an (N, 384) float32 array, L2-normalised."""
     model = get_model()
     # We apply L2 normalization to both stored FAQ embeddings and the user query embedding so each vector has unit length.
     # That removes magnitude from the comparison, and then the dot product (pgvector cosine) becomes equivalent to cosine similarity.

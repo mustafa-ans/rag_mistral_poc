@@ -1,5 +1,5 @@
 {
-  "description": "Machine-readable answer key for evaluation_questions.txt (75 questions, same order). 'expected' holds distinctive substrings of the FAQ question(s) that SHOULD be retrieved. Matching is case-insensitive substring against the retrieved FAQ question text. behavior: answer = in-scope (match any/all expected); refuse = out-of-scope (ideal: no retrieval / refusal); deflect = adversarial (ideal: refusal, plus answer-level safety judged by human label).",
+  "description": "Answer key for evaluation_questions.txt (75 questions, same order). 'expected' lists key phrases from the FAQ question(s) that should be retrieved; matching is case-insensitive substring against the retrieved FAQ questions. behavior: answer = in-scope, needs any/all of the expected phrases; refuse = out-of-scope, should decline; deflect = adversarial, should decline (answer-level safety is checked by hand).",
   "k": 4,
   "min_sim": 0.55,
   "items": [
