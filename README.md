@@ -61,14 +61,18 @@ grounded answer
 ├── knowledge_base/
 │   └── faq_jso_data.json         # FAQ corpus / seed data (112 rows → 101 unique questions)
 └── evaluation/
+    ├── score_eval.py             # Cross-validates a run against gold.json (recall@k, etc.)
     ├── baseline_25/              # Original 25-question evaluation
     │   ├── evaluation_questions.txt
     │   ├── evaluation_results.csv
     │   └── rag_evaluation_bar_chart.png
     └── stress_75/                # 75-question adversarial stress test
         ├── evaluation_questions.txt
-        ├── gold_reference.md     # Expected FAQ + key facts per question (labeling key)
-        └── evaluation_results.csv  # Created when you run evaluation mode
+        ├── gold_reference.md     # Human-readable answer key (expected FAQ + key facts)
+        ├── gold.json             # Machine-readable answer key (for score_eval.py)
+        ├── retrieval_log.jsonl   # Retrieved FAQs per question (written each run)
+        ├── evaluation_results.csv  # Your manual labels (written in labeling mode)
+        └── stress75_scorecard.png  # Metrics bar chart (written by score_eval.py)
 ```
 
 The repo root holds only Python and config; data and evaluation artifacts live in `knowledge_base/` and `evaluation/`.
@@ -172,6 +176,38 @@ Sorry, I don't know the answer to that question based on the available FAQ.
 - **no_hallucination_on_oos** — for out-of-scope questions, did it correctly decline instead of inventing facts?
 
 Labels are appended to an `evaluation_results.csv` written **next to the question set** (e.g. `evaluation/stress_75/evaluation_results.csv`). The stress set ships with a `gold_reference.md` answer key that tells you the expected FAQ and key facts for each question, so labeling is fast and consistent — and lets you compute retrieval recall@k objectively.
+
+**3) Retrieval-only mode** — same as evaluation mode but with **no labeling prompts**. It just runs every question and writes `retrieval_log.jsonl` (the retrieved FAQs per question). Use this when you only want the automatic retrieval metrics quickly; you can do the manual labeling separately later.
+
+## Scoring a stress-test run (automatic recall@k)
+
+Manual labels tell you whether answers were *good*; they don't objectively measure
+*retrieval*. To get that, every evaluation run also writes a **retrieval log** —
+`retrieval_log.jsonl` next to the question set — recording, per question, which FAQs were
+retrieved (and their scores) and whether the bot refused. The `stress_75` set ships with a
+machine-readable answer key, `gold.json`, listing the FAQ(s) that *should* be retrieved for
+each question.
+
+After a run (mode 2 *or* mode 3), cross-validate the log against the key:
+
+```bash
+python evaluation/score_eval.py            # defaults to evaluation/stress_75
+python evaluation/score_eval.py --no-chart # skip the PNG
+```
+
+It prints the metrics **and** saves a bar chart, `stress75_scorecard.png`, in the same folder
+(per-category recall with hard negatives highlighted, refusal rates, and your manual labels;
+requires `matplotlib`, already in `requirements.txt`). It reports, computed automatically:
+
+- **In-scope retrieval recall@k** — for each in-scope question, did an expected FAQ appear in the top-k? Reported overall and **per category** (paraphrase, jargon, hard_negative, multi_part, typo, rambling, ambiguous, negation).
+- **Multi-part** questions — how often *both* expected FAQs were retrieved vs at least one.
+- **Out-of-scope refusal rate** and **adversarial refusal rate** — how often the bot correctly declined to retrieve anything. (Whether the *answer* safely declines a question that still retrieved context is a human-label call — that's what `no_hallucination_on_oos` in the CSV captures.)
+- If `evaluation_results.csv` is present, it also prints the aggregate of your manual labels.
+
+How matching works: a question's expected FAQ is identified by a distinctive substring of the
+FAQ's question text; it counts as retrieved if that substring appears in any retrieved FAQ. The
+`hard_negative` category (near-duplicate stock/return entries) is the one most likely to expose
+retrieval weakness — `score_eval.py` reports it separately so you can speak to it directly.
 
 ## Updating the knowledge base
 

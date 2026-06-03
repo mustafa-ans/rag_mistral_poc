@@ -1,5 +1,7 @@
 import os
 import csv
+import json
+import contextlib
 from dotenv import load_dotenv
 from openai import OpenAI, OpenAIError
 
@@ -106,7 +108,7 @@ def run_interactive_chat(conn):
         print(f"\nAnswer:\n{ans}\n")
 
 
-def run_evaluation(conn):
+def run_evaluation(conn, label: bool = True):
     """
     Evaluation mode:
     - Reads questions from a text file (one per line).
@@ -141,23 +143,34 @@ def run_evaluation(conn):
     csv_path = os.path.join(os.path.dirname(questions_file) or ".", "evaluation_results.csv")
     write_header = not os.path.exists(csv_path)
 
-    with open(csv_path, "a", newline="", encoding="utf-8") as csvfile:
-        writer = csv.writer(csvfile)
-        if write_header:
-            writer.writerow(
-                [
-                    "question",
-                    "answer",
-                    "retrieval_success",
-                    "answer_correct",
-                    "no_hallucination_on_oos",
-                ]
+    # Per-question retrieval log (fresh each run) for automatic scoring against gold.json
+    log_path = os.path.join(os.path.dirname(questions_file) or ".", "retrieval_log.jsonl")
+
+    with contextlib.ExitStack() as stack:
+        # The retrieval log is always written; the labels CSV only in labeling mode.
+        logf = stack.enter_context(open(log_path, "w", encoding="utf-8"))
+        writer = None
+        if label:
+            csvfile = stack.enter_context(
+                open(csv_path, "a", newline="", encoding="utf-8")
             )
+            writer = csv.writer(csvfile)
+            if write_header:
+                writer.writerow(
+                    [
+                        "question",
+                        "answer",
+                        "retrieval_success",
+                        "answer_correct",
+                        "no_hallucination_on_oos",
+                    ]
+                )
 
         for idx, q in enumerate(questions, start=1):
-            print("\n" + "=" * 80)
-            print(f"Question {idx}/{len(questions)}:")
-            print(q)
+            if label:
+                print("\n" + "=" * 80)
+                print(f"Question {idx}/{len(questions)}:")
+                print(q)
 
             ans, context_block, hits = ask_mistral_rag(
                 q,
@@ -168,6 +181,23 @@ def run_evaluation(conn):
                 show_debug=False,
                 return_debug=True,
             )
+
+            # Log this question's retrieval (for automatic recall@k scoring via score_eval.py)
+            logf.write(json.dumps({
+                "idx": idx,
+                "question": q,
+                "refused": not bool(context_block),
+                "retrieved": [{"faq": h[0], "score": round(float(h[1]), 4)} for h in hits],
+                "answer": ans.replace("\n", " ").strip(),
+            }, ensure_ascii=False) + "\n")
+            logf.flush()
+
+            # Retrieval-only mode: log it, print a one-line status, skip labeling.
+            if not label:
+                top = hits[0][0] if hits else "(none)"
+                status = "refused" if not context_block else f"top match -> {top}"
+                print(f"[{idx}/{len(questions)}] {status}")
+                continue
 
             print("\n--- Retrieved FAQ context (top-k) ---\n")
             print(context_block if context_block else "[No context found]")
@@ -209,7 +239,10 @@ def run_evaluation(conn):
 
             print("Labels saved.")
 
-    print(f"\nEvaluation completed. Results saved to {csv_path}.\n")
+    print(f"\nDone. Retrieval log written to {log_path}.")
+    if label:
+        print(f"Labels saved to {csv_path}.")
+    print("Score it with:  python evaluation/score_eval.py\n")
 
 
 if __name__ == "__main__":
@@ -241,10 +274,13 @@ if __name__ == "__main__":
     # Choose mode: interactive chat or evaluation
     print("\nSelect mode:")
     print("1) Interactive chat")
-    print("2) Evaluation mode (batch questions -> CSV metrics)")
-    mode = input("Choose 1 or 2 (default 1): ").strip()
+    print("2) Evaluation mode (batch questions -> labels + retrieval log)")
+    print("3) Retrieval-only (no labeling; just write retrieval_log.jsonl for scoring)")
+    mode = input("Choose 1, 2 or 3 (default 1): ").strip()
     if mode == "2":
         run_evaluation(conn)
+    elif mode == "3":
+        run_evaluation(conn, label=False)
     else:
         run_interactive_chat(conn)
 
