@@ -1,4 +1,7 @@
 # local_embeddings_faq.py
+# Local sentence-embedding model (all-MiniLM-L6-v2, 384-dim).
+# Storage/retrieval of the vectors now lives in db.py (Postgres + pgvector);
+# this module's only job is turning text into normalised vectors.
 import os
 
 # --- Silence Hugging Face / sentence-transformers startup noise --------------
@@ -8,10 +11,7 @@ os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")  # no symlink warn
 os.environ.setdefault("TRANSFORMERS_NO_ADVISORY_WARNINGS", "1")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
-import time
-import pickle
 import logging
-
 import numpy as np
 
 # Quiet the "unauthenticated requests to the HF Hub" log line and friends.
@@ -25,60 +25,31 @@ except Exception:
 
 from sentence_transformers import SentenceTransformer
 
-from faq_data import faq_database
-
 EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"  # ~384-dim, fast
-EMBEDDING_CACHE = os.path.join("data", "faq_embeddings_local.pkl")
 BATCH_SIZE = 100
 
 _model = None
 
+
 def get_model():
+    """Lazy singleton: load the model once, on first use."""
     global _model
     if _model is None:
         _model = SentenceTransformer(EMBEDDING_MODEL_NAME)
     return _model
 
-def l2_normalize(vec: np.ndarray, eps: float = 1e-12) -> np.ndarray:
-    norm = np.linalg.norm(vec)
-    return vec / norm if norm > eps else vec
-
-def save_cache(path: str, obj: dict):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "wb") as f:
-        pickle.dump(obj, f)
-
-def load_cache(path: str):
-    if os.path.exists(path):
-        with open(path, "rb") as f:
-            return pickle.load(f)
-    return None
 
 def batch_embeddings(texts):
+    """Embed a list of texts -> (N, 384) float32 array, L2-normalised."""
     model = get_model()
-    # We apply L2 normalization to both stored FAQ embeddings and the user query embedding so each vector has unit length. 
-    # That removes magnitude from the comparison, and then the dot product becomes equivalent to cosine similarity.
+    # We apply L2 normalization to both stored FAQ embeddings and the user query embedding so each vector has unit length.
+    # That removes magnitude from the comparison, and then the dot product (pgvector cosine) becomes equivalent to cosine similarity.
     embs = model.encode(texts, batch_size=BATCH_SIZE, show_progress_bar=False, convert_to_numpy=True, normalize_embeddings=True)
-    # normalize_embeddings=True already L2 normalizes; l2_normalize here would be redundant. 
     return embs
 
-def get_or_build_faq_embeddings(cache_file=EMBEDDING_CACHE, force_rebuild: bool = False):
-    corpus_keys = list(faq_database.keys())
-    cache = None
-    if not force_rebuild:
-        cache = load_cache(cache_file)
-
-    if cache and set(cache.keys()) == set(corpus_keys):
-        # Use cached embeddings
-        return {k: np.array(v, dtype=np.float32) for k, v in cache.items()}
-
-    print(f"Building local embeddings for {len(corpus_keys)} FAQ questions...")
-    embs = batch_embeddings(corpus_keys)
-    result = {corpus_keys[i]: embs[i] for i in range(len(corpus_keys))}
-    save_cache(cache_file, {k: v.tolist() for k, v in result.items()})
-    return result
 
 def embed_query_local(query: str) -> np.ndarray:
+    """Embed a single query the same way as the corpus (normalised float32)."""
     model = get_model()
     vec = model.encode([query], convert_to_numpy=True, normalize_embeddings=True)[0]
     return vec.astype(np.float32)

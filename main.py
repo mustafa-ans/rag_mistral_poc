@@ -3,9 +3,7 @@ import csv
 from dotenv import load_dotenv
 from openai import OpenAI, OpenAIError
 
-from faq_data import faq_database, reload_faq_database
-from local_embeddings_faq import get_or_build_faq_embeddings
-from retrieval_faq import retrieve_faq_context
+import db
 
 load_dotenv()
 
@@ -28,21 +26,21 @@ SYSTEM_PROMPT = (
 
 def ask_mistral_rag(
     question: str,
-    vector_db: dict,
+    conn,
     max_tokens: int = 250,
     k: int = 4,
     min_sim: float = 0.55,
-    # show_debug: bool = False,
-    show_debug: bool = True,
+    show_debug: bool = False,
     return_debug: bool = False,
 ):
     """
-    RAG wrapper. If return_debug=True, also returns retrieved context and hits.
+    RAG wrapper. Retrieval runs in Postgres via pgvector (db.search).
+    If return_debug=True, also returns retrieved context and hits.
     Return:
       - if return_debug=False: answer (str)
       - if return_debug=True: (answer, context_block, hits)
     """
-    context_block, hits = retrieve_faq_context(question, vector_db, k=k, min_sim=min_sim)
+    context_block, hits = db.search(conn, question, k=k, min_sim=min_sim)
 
     if not context_block:
         answer = "Sorry, I don't know the answer to that question based on the available FAQ."
@@ -80,36 +78,35 @@ def ask_mistral_rag(
     return answer
 
 
-def run_interactive_chat(vector_db):
+def run_interactive_chat(conn):
     """
-    Original interactive loop: ask questions manually.
+    Interactive loop: ask questions manually.
     """
     while True:
-        q = input("\nAsk a question (or 'rebuild' / 'quit' / 'clear'): ").strip()
+        q = input("\nAsk a question (or 'reingest' / 'quit' / 'clear'): ").strip()
         cmd = q.lower()
 
         if cmd == "clear":
             os.system('cls' if os.name == 'nt' else 'clear')
-            print("RAG FAQ Chatbot (Mistral-powered)")
-            print("Type your question, or 'rebuild' / 'quit' / 'clear'.")
+            print("RAG FAQ Chatbot (Mistral + pgvector)")
+            print("Type your question, or 'reingest' / 'quit' / 'clear'.")
             continue
 
         if cmd in {"quit", "exit"}:
             break
 
-        if cmd == "rebuild":
-            print("Rebuilding embeddings...")
-            reload_faq_database()  # re-read the JSON from disk first, so edits made
-                                   # during this session are picked up
-            vector_db = get_or_build_faq_embeddings(force_rebuild=True)
-            print(f"Done. {len(vector_db)} FAQ questions embedded.")
+        if cmd in {"reingest", "rebuild"}:
+            # Re-read the JSON from disk and refresh the faq table (re-embeds).
+            print("Re-ingesting FAQ data into Postgres...")
+            n = db.ingest_faq(conn)
+            print(f"Done. {n} FAQ rows in the database.")
             continue
 
-        ans = ask_mistral_rag(q, vector_db)
+        ans = ask_mistral_rag(q, conn)
         print(f"\nAnswer:\n{ans}\n")
 
 
-def run_evaluation(vector_db):
+def run_evaluation(conn):
     """
     Evaluation mode:
     - Reads questions from a text file (one per line).
@@ -163,7 +160,7 @@ def run_evaluation(vector_db):
 
             ans, context_block, hits = ask_mistral_rag(
                 q,
-                vector_db,
+                conn,
                 max_tokens=250,
                 k=4,
                 min_sim=0.55,
@@ -215,13 +212,30 @@ def run_evaluation(vector_db):
 
 
 if __name__ == "__main__":
-    # Ask once at startup
-    choice = input("Rebuild FAQ embeddings? (y/n): ").strip().lower()
-    if choice == "":
-        choice = "n"
-    force = choice == "y"
+    # Connect to Postgres (DATABASE_URL from .env). Run `python setup_db.py` first.
+    try:
+        conn = db.connect()
+    except Exception as e:
+        print(f"Could not connect to the database: {e}")
+        print("Run `python setup_db.py` first, and check DATABASE_URL in your .env.")
+        raise SystemExit(1)
 
-    vector_db = get_or_build_faq_embeddings(force_rebuild=force)
+    # Make sure the schema exists (idempotent), then ensure the table has data.
+    try:
+        db.init_schema(conn)
+    except RuntimeError as e:
+        print(e)
+        raise SystemExit(1)
+
+    if db.faq_count(conn) == 0:
+        print("FAQ table is empty; ingesting from faq_jso_data.json ...")
+        n = db.ingest_faq(conn)
+        print(f"Ingested {n} rows.")
+    else:
+        choice = input("Re-ingest FAQ data into Postgres? (y/n): ").strip().lower()
+        if choice == "y":
+            n = db.ingest_faq(conn)
+            print(f"Re-ingested {n} rows.")
 
     # Choose mode: interactive chat or evaluation
     print("\nSelect mode:")
@@ -229,6 +243,8 @@ if __name__ == "__main__":
     print("2) Evaluation mode (batch questions -> CSV metrics)")
     mode = input("Choose 1 or 2 (default 1): ").strip()
     if mode == "2":
-        run_evaluation(vector_db)
+        run_evaluation(conn)
     else:
-        run_interactive_chat(vector_db)
+        run_interactive_chat(conn)
+
+    conn.close()
