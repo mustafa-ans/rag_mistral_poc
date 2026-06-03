@@ -4,8 +4,4 @@ __pycache__/
 *.pyc
 data/
 visualization/
-personal_reference.md
-personal_reference_backup.md
-roadmap.md
-CV_Mustafa_Ansari.pdf
-Term_paper_Industry_4.0_Final_Mustafa_Ansari.pdf
+todo_refs/
