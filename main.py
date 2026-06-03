@@ -119,10 +119,10 @@ def run_evaluation(conn):
     - Saves results to evaluation_results.csv.
     """
     questions_file = input(
-        "Enter path to questions file (default: evaluation_questions.txt): "
+        "Enter path to questions file (default: evaluation/stress_75/evaluation_questions.txt): "
     ).strip()
     if questions_file == "":
-        questions_file = "evaluation_questions.txt"
+        questions_file = "evaluation/stress_75/evaluation_questions.txt"
 
     if not os.path.exists(questions_file):
         print(f"Questions file not found at {questions_file}")
@@ -137,7 +137,8 @@ def run_evaluation(conn):
 
     print(f"\nLoaded {len(questions)} questions for evaluation.\n")
 
-    csv_path = "evaluation_results.csv"
+    # Write results next to the questions file (e.g. evaluation/stress_75/evaluation_results.csv)
+    csv_path = os.path.join(os.path.dirname(questions_file) or ".", "evaluation_results.csv")
     write_header = not os.path.exists(csv_path)
 
     with open(csv_path, "a", newline="", encoding="utf-8") as csvfile:

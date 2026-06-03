@@ -82,7 +82,7 @@ def _load_rows(json_path: str = None):
     tuples. De-dup is on the question text (later rows win), matching the old
     dict behaviour."""
     base = os.path.dirname(__file__)
-    path = json_path or os.path.join(base, "faq_jso_data.json")
+    path = json_path or os.path.join(base, "knowledge_base", "faq_jso_data.json")
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
